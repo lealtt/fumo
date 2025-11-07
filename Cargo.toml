@@ -1,0 +1,36 @@
+[package]
+name = "fumo"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+
+[workspace]
+
+[dependencies]
+dotenv.workspace = true
+poise.workspace = true
+rand.workspace = true
+serenity.workspace = true
+tokio.workspace = true
+
+[workspace.dependencies]
+dotenv = "0.15.0"
+rand = "0.8"
+
+[workspace.dependencies.serenity]
+version = "0.12"
+
+[workspace.dependencies.tokio]
+version = "1.21.2"
+features = [
+    "macros",
+    "rt-multi-thread",
+]
+
+[workspace.dependencies.poise]
+git = "https://github.com/serenity-rs/poise.git"
+branch = "next"
+features = [
+    "cache",
+    "collector",
+]
