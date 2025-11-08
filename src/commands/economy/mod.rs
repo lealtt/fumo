@@ -4,7 +4,7 @@ use crate::{
     database,
     functions::{
         pretty_message::pretty_message,
-        time::{self, ResetPeriod, ResetTime},
+        time::{self, ResetTime},
     },
     models::{RewardStateModel, UserModel},
 };
@@ -16,7 +16,9 @@ use serenity::collector::ComponentInteractionCollector;
 use serenity::{CreateActionRow, CreateButton};
 use std::time::Duration;
 
-// Reset configuration in BRT (UTC-3) at 21:00
+mod reward_kind;
+use reward_kind::RewardKind;
+
 const RESET_CONFIG: ResetTime = ResetTime {
     hour: 21,
     minute: 0,
@@ -27,8 +29,8 @@ const RESET_CONFIG: ResetTime = ResetTime {
 #[poise::command(
     slash_command,
     prefix_command,
-    category = "Economia",
     rename = "economia",
+    category = "Economia",
     interaction_context = "Guild",
     subcommands("rewards", "balance")
 )]
@@ -37,7 +39,7 @@ pub async fn economy(_: Context<'_>) -> Result<(), Error> {
 }
 
 /// Veja seu saldo, diamantes e cooldown das recompensas.
-#[poise::command(slash_command, prefix_command, rename = "saldo")]
+#[poise::command(slash_command, prefix_command, rename = "saldo", category = "Economia")]
 pub async fn balance(ctx: Context<'_>) -> Result<(), Error> {
     ctx.defer_ephemeral().await?;
 
@@ -60,7 +62,6 @@ pub async fn balance(ctx: Context<'_>) -> Result<(), Error> {
         ),
     ];
 
-    // Add cooldown information
     description_lines.push(String::new());
     description_lines.push("**Recompensas disponíveis:**".to_string());
 
@@ -100,14 +101,18 @@ pub async fn balance(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-/// Resgate suas recomepensas!
-#[poise::command(slash_command, prefix_command, rename = "recompensas")]
+/// Resgate suas recompensas!
+#[poise::command(
+    slash_command,
+    prefix_command,
+    rename = "recompensas",
+    category = "Economia"
+)]
 pub async fn rewards(ctx: Context<'_>) -> Result<(), Error> {
     ctx.defer_ephemeral().await?;
 
     let discord_id = ctx.author().id.get() as i64;
 
-    // Load user and reward states
     let (mut user, mut reward_states) = {
         let db = ctx.data().database.lock().await;
         let user = database::get_or_create_user(&db, discord_id).await?;
@@ -153,7 +158,6 @@ pub async fn rewards(ctx: Context<'_>) -> Result<(), Error> {
                 user.diamonds += amount;
             }
 
-            // Update reward state
             let total_claims = state.map(|s| s.total_claims + 1).unwrap_or(1);
             let next_reset = time::next_reset_from(now, kind.reset_period(), &RESET_CONFIG);
 
@@ -208,7 +212,6 @@ pub async fn rewards(ctx: Context<'_>) -> Result<(), Error> {
             .await?;
     }
 
-    // Clean up buttons after inactivity
     let (embed, _) = build_rewards_message(&user, &reward_states, Utc::now(), None);
     reply
         .edit(
@@ -341,75 +344,4 @@ fn format_cooldown_message(next_time: DateTime<Utc>) -> String {
         absolute,
         relative
     )
-}
-
-#[derive(Clone, Copy)]
-enum RewardKind {
-    Daily,
-    Weekly,
-    Monthly,
-}
-
-impl RewardKind {
-    const ALL: [Self; 3] = [Self::Daily, Self::Weekly, Self::Monthly];
-
-    fn custom_id(self) -> &'static str {
-        match self {
-            Self::Daily => "eco_daily",
-            Self::Weekly => "eco_weekly",
-            Self::Monthly => "eco_monthly",
-        }
-    }
-
-    fn db_name(self) -> &'static str {
-        match self {
-            Self::Daily => "daily",
-            Self::Weekly => "weekly",
-            Self::Monthly => "monthly",
-        }
-    }
-
-    fn button_label(self) -> &'static str {
-        match self {
-            Self::Daily => "Diária",
-            Self::Weekly => "Semanal",
-            Self::Monthly => "Mensal",
-        }
-    }
-
-    fn field_title(self) -> &'static str {
-        match self {
-            Self::Daily => "Recompensa diária",
-            Self::Weekly => "Recompensa semanal",
-            Self::Monthly => "Recompensa mensal",
-        }
-    }
-
-    fn button_emoji(self) -> &'static crate::constants::CustomEmoji {
-        match self {
-            Self::Daily => &icon::DOLLAR,
-            Self::Weekly => &icon::GIFT,
-            Self::Monthly => &icon::DIAMOND,
-        }
-    }
-
-    fn money_range(self) -> (i64, i64) {
-        match self {
-            Self::Daily => (250, 400),
-            Self::Weekly => (800, 1400),
-            Self::Monthly => (4000, 6000),
-        }
-    }
-
-    fn from_custom_id(id: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|kind| kind.custom_id() == id)
-    }
-
-    fn reset_period(self) -> ResetPeriod {
-        match self {
-            Self::Daily => ResetPeriod::Daily,
-            Self::Weekly => ResetPeriod::Weekly,
-            Self::Monthly => ResetPeriod::Monthly,
-        }
-    }
 }

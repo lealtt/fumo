@@ -7,28 +7,25 @@ use poise::serenity_prelude as serenity;
 use serenity::builder::CreateAutocompleteResponse;
 use std::collections::HashSet;
 
+pub mod command_finder;
+use command_finder::CommandFinder;
+
 /// Veja informações sobre meus comandos.
 #[poise::command(
     slash_command,
     prefix_command,
     track_edits,
-    aliases("ajuda", "h"),
+    aliases("help", "h"),
     interaction_context = "Guild",
+    rename = "ajuda",
     category = "Geral"
 )]
 pub async fn help(
     ctx: Context<'_>,
     #[description = "Comando específico para descrever"]
     #[autocomplete = "help_autocomplete"]
-    mut command: Option<String>,
+    command: Option<String>,
 ) -> Result<(), Error> {
-    if ctx.invoked_command_name() != "ajuda" {
-        command = match command {
-            Some(rest) => Some(format!("{} {}", ctx.invoked_command_name(), rest)),
-            None => Some(ctx.invoked_command_name().to_string()),
-        };
-    }
-
     match command {
         Some(name) => send_command_help(ctx, &name).await?,
         None => send_overview(ctx).await?,
@@ -38,12 +35,10 @@ pub async fn help(
 }
 
 async fn send_overview(ctx: Context<'_>) -> Result<(), Error> {
-    let lines: Vec<String> = ctx
-        .framework()
-        .options()
-        .commands
+    let finder = CommandFinder::new(&ctx);
+    let lines: Vec<String> = finder
+        .get_all_commands()
         .iter()
-        .filter(|cmd| !cmd.hide_in_help)
         .map(|command| {
             let description = command.description.as_deref().unwrap_or("Sem descrição");
             let category = command.category.as_deref().unwrap_or("Sem categoria");
@@ -84,16 +79,49 @@ async fn send_overview(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 async fn send_command_help(ctx: Context<'_>, name: &str) -> Result<(), Error> {
-    if let Some(command) = find_command(&ctx, name) {
-        let description = command
-            .help_text
-            .as_deref()
-            .unwrap_or_else(|| command.description.as_deref().unwrap_or("Sem descrição"))
-            .to_string();
-        let category = command.category.as_deref().unwrap_or("Sem categoria");
+    let finder = CommandFinder::new(&ctx);
+
+    if let Some(info) = finder.find_command(name) {
+        let (cmd_name, description, category, parameters, aliases) =
+            if let Some(subcmd) = info.subcommand {
+                let desc = subcmd
+                    .help_text
+                    .as_deref()
+                    .unwrap_or_else(|| subcmd.description.as_deref().unwrap_or("Sem descrição"))
+                    .to_string();
+                let cat = subcmd.category.as_deref().unwrap_or("Sem categoria");
+                let full_name = format!("{} {}", info.command.name, subcmd.name);
+                (
+                    full_name,
+                    desc,
+                    cat.to_string(),
+                    &subcmd.parameters,
+                    &subcmd.aliases,
+                )
+            } else {
+                let desc = info
+                    .command
+                    .help_text
+                    .as_deref()
+                    .unwrap_or_else(|| {
+                        info.command
+                            .description
+                            .as_deref()
+                            .unwrap_or("Sem descrição")
+                    })
+                    .to_string();
+                let cat = info.command.category.as_deref().unwrap_or("Sem categoria");
+                (
+                    info.command.name.to_string(),
+                    desc,
+                    cat.to_string(),
+                    &info.command.parameters,
+                    &info.command.aliases,
+                )
+            };
 
         let mut embed = serenity::CreateEmbed::new()
-            .title(format!("{} /{}", icon::BELL, command.name))
+            .title(format!("{} /{}", icon::BELL, cmd_name))
             .description(description)
             .colour(colors::MOON)
             .field(
@@ -102,19 +130,17 @@ async fn send_command_help(ctx: Context<'_>, name: &str) -> Result<(), Error> {
                 true,
             );
 
-        if !command.aliases.is_empty() {
-            let aliases = command
-                .aliases
+        if !aliases.is_empty() {
+            let alias_str = aliases
                 .iter()
                 .map(|alias| format!("`{alias}`"))
                 .collect::<Vec<_>>()
                 .join(", ");
-            embed = embed.field(format!("{} Alias", icon::HASTAG), aliases, true);
+            embed = embed.field(format!("{} Alias", icon::HASTAG), alias_str, true);
         }
 
-        if !command.parameters.is_empty() {
-            let params = command
-                .parameters
+        if !parameters.is_empty() {
+            let params = parameters
                 .iter()
                 .map(|param| {
                     let param_desc = param.description.as_deref().unwrap_or("Sem descrição");
@@ -144,11 +170,13 @@ async fn send_command_help(ctx: Context<'_>, name: &str) -> Result<(), Error> {
 }
 
 async fn help_autocomplete(ctx: Context<'_>, partial: &str) -> CreateAutocompleteResponse {
+    let finder = CommandFinder::new(&ctx);
     let lowercase = partial.to_ascii_lowercase();
     let mut seen = HashSet::new();
     let mut matches = Vec::new();
 
-    for name in available_command_names(&ctx)
+    for name in finder
+        .get_all_command_names()
         .into_iter()
         .filter(|name| name.to_ascii_lowercase().starts_with(&lowercase))
     {
@@ -168,27 +196,4 @@ async fn help_autocomplete(ctx: Context<'_>, partial: &str) -> CreateAutocomplet
             acc.add_string_choice(name.clone(), name)
         })
     }
-}
-
-fn available_command_names(ctx: &Context<'_>) -> Vec<String> {
-    ctx.framework()
-        .options()
-        .commands
-        .iter()
-        .map(|cmd| cmd.name.to_string())
-        .collect()
-}
-
-fn find_command<'a>(
-    ctx: &'a Context<'_>,
-    name: &str,
-) -> Option<&'a poise::Command<crate::Data, crate::Error>> {
-    let needle = name.to_ascii_lowercase();
-    ctx.framework().options().commands.iter().find(|cmd| {
-        cmd.name.to_ascii_lowercase() == needle
-            || cmd
-                .aliases
-                .iter()
-                .any(|alias| alias.to_ascii_lowercase() == needle)
-    })
 }

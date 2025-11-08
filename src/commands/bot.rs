@@ -9,8 +9,8 @@ use poise::serenity_prelude as serenity;
 #[poise::command(
     slash_command,
     prefix_command,
-    category = "Utilidades",
     interaction_context = "Guild",
+    category = "Utilidades",
     subcommands("info")
 )]
 pub async fn bot(_: Context<'_>) -> Result<(), Error> {
@@ -18,7 +18,7 @@ pub async fn bot(_: Context<'_>) -> Result<(), Error> {
 }
 
 /// Exibe estatísticas sobre mim.
-#[poise::command(slash_command, prefix_command)]
+#[poise::command(slash_command, prefix_command, category = "Utilidades")]
 pub async fn info(ctx: Context<'_>) -> Result<(), Error> {
     let cache = ctx.serenity_context().cache.clone();
 
