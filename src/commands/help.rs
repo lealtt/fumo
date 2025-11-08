@@ -1,23 +1,28 @@
-use crate::{Context, Error};
+use crate::{
+    Context, Error,
+    constants::{colors, icon},
+    functions::pretty_message::pretty_message,
+};
 use poise::serenity_prelude as serenity;
 use serenity::builder::CreateAutocompleteResponse;
 use std::collections::HashSet;
 
-/// Unified help command showing either an overview.
+/// Veja informações sobre meus comandos.
 #[poise::command(
     slash_command,
     prefix_command,
     track_edits,
+    aliases("ajuda", "h"),
     interaction_context = "Guild",
-    category = "General"
+    category = "Geral"
 )]
 pub async fn help(
     ctx: Context<'_>,
-    #[description = "Specific command to describe"]
+    #[description = "Comando específico para descrever"]
     #[autocomplete = "help_autocomplete"]
     mut command: Option<String>,
 ) -> Result<(), Error> {
-    if ctx.invoked_command_name() != "help" {
+    if ctx.invoked_command_name() != "ajuda" {
         command = match command {
             Some(rest) => Some(format!("{} {}", ctx.invoked_command_name(), rest)),
             None => Some(ctx.invoked_command_name().to_string()),
@@ -40,76 +45,99 @@ async fn send_overview(ctx: Context<'_>) -> Result<(), Error> {
         .iter()
         .filter(|cmd| !cmd.hide_in_help)
         .map(|command| {
-            let description = command
-                .description
-                .as_deref()
-                .unwrap_or("No description provided");
-            let category = command.category.as_deref().unwrap_or("Uncategorized");
-            format!(
-                "`{}` — {} _(Category: {})_",
-                command.name, description, category
+            let description = command.description.as_deref().unwrap_or("Sem descrição");
+            let category = command.category.as_deref().unwrap_or("Sem categoria");
+            pretty_message(
+                icon::GEAR,
+                format!(
+                    "`{}` — {} _(Categoria: {})_",
+                    command.name, description, category
+                ),
             )
         })
         .collect();
 
-    let content = if lines.is_empty() {
-        "No commands available yet.".to_string()
-    } else {
-        format!("**Available commands**\n{}", lines.join("\n"))
-    };
+    let mut description = vec![pretty_message(
+        icon::BELL,
+        "Use `/ajuda <comando>` para ver detalhes completos de um comando.",
+    )];
 
-    ctx.send(
-        poise::CreateReply::default()
-            .content(content)
-            .ephemeral(true),
-    )
-    .await?;
+    if lines.is_empty() {
+        description.push(pretty_message(
+            icon::MINUS,
+            "Nenhum comando disponível ainda.",
+        ));
+    } else {
+        description.push(String::new());
+        description.push("**Comandos disponíveis**".to_string());
+        description.extend(lines);
+    }
+
+    let embed = serenity::CreateEmbed::new()
+        .description(description.join("\n"))
+        .colour(colors::MINT);
+
+    ctx.send(poise::CreateReply::default().embed(embed).ephemeral(true))
+        .await?;
 
     Ok(())
 }
 
 async fn send_command_help(ctx: Context<'_>, name: &str) -> Result<(), Error> {
     if let Some(command) = find_command(&ctx, name) {
-        let mut description = command
+        let description = command
             .help_text
             .as_deref()
-            .unwrap_or_else(|| {
-                command
-                    .description
-                    .as_deref()
-                    .unwrap_or("No description provided")
-            })
+            .unwrap_or_else(|| command.description.as_deref().unwrap_or("Sem descrição"))
             .to_string();
-        let category = command.category.as_deref().unwrap_or("Uncategorized");
+        let category = command.category.as_deref().unwrap_or("Sem categoria");
 
-        if !command.parameters.is_empty() {
-            description.push_str("\n\n**Parameters**\n");
-            for param in &command.parameters {
-                let param_desc = param
-                    .description
-                    .as_deref()
-                    .unwrap_or("No description provided");
-                description.push_str(&format!("`{}` — {}\n", param.name, param_desc));
-            }
+        let mut embed = serenity::CreateEmbed::new()
+            .title(format!("{} /{}", icon::BELL, command.name))
+            .description(description)
+            .colour(colors::MOON)
+            .field(
+                format!("{} Categoria", icon::GEAR),
+                format!("`{}`", category),
+                true,
+            );
+
+        if !command.aliases.is_empty() {
+            let aliases = command
+                .aliases
+                .iter()
+                .map(|alias| format!("`{alias}`"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            embed = embed.field(format!("{} Alias", icon::HASTAG), aliases, true);
         }
 
-        let content = format!(
-            "**{}**\n_Category: {}_\n{}",
-            command.name, category, description
-        );
-        ctx.send(
-            poise::CreateReply::default()
-                .content(content)
-                .ephemeral(true),
-        )
-        .await?;
+        if !command.parameters.is_empty() {
+            let params = command
+                .parameters
+                .iter()
+                .map(|param| {
+                    let param_desc = param.description.as_deref().unwrap_or("Sem descrição");
+                    format!("`{}` — {}", param.name, param_desc)
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            embed = embed.field(format!("{} Parâmetros", icon::PLUS), params, false);
+        }
+
+        ctx.send(poise::CreateReply::default().embed(embed).ephemeral(true))
+            .await?;
     } else {
-        ctx.send(
-            poise::CreateReply::default()
-                .content(format!("Couldn't find a command named `{name}`"))
-                .ephemeral(true),
-        )
-        .await?;
+        let embed = serenity::CreateEmbed::new()
+            .title(format!("{} Comando não encontrado", icon::ERROR))
+            .description(pretty_message(
+                icon::ERROR,
+                format!("Não foi possível encontrar um comando chamado `{name}`"),
+            ))
+            .colour(colors::MOON);
+
+        ctx.send(poise::CreateReply::default().embed(embed).ephemeral(true))
+            .await?;
     }
 
     Ok(())
@@ -134,7 +162,7 @@ async fn help_autocomplete(ctx: Context<'_>, partial: &str) -> CreateAutocomplet
 
     let response = CreateAutocompleteResponse::new();
     if matches.is_empty() {
-        response.add_string_choice("No matching commands", "")
+        response.add_string_choice("Nenhum comando encontrado", "")
     } else {
         matches.into_iter().fold(response, |acc, name| {
             acc.add_string_choice(name.clone(), name)
@@ -147,11 +175,7 @@ fn available_command_names(ctx: &Context<'_>) -> Vec<String> {
         .options()
         .commands
         .iter()
-        .flat_map(|cmd| {
-            let mut names = vec![cmd.name.to_string()];
-            names.extend(cmd.aliases.iter().map(|alias| alias.to_string()));
-            names
-        })
+        .map(|cmd| cmd.name.to_string())
         .collect()
 }
 

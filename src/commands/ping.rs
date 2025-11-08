@@ -1,17 +1,20 @@
-use crate::{Context, Error};
+use crate::{Context, Error, constants::icon, functions::pretty_message::pretty_message};
 use std::time::Instant;
 
-/// Reply with pong 🏓!
+/// Responde com pong 🏓!
 #[poise::command(
     slash_command,
     prefix_command,
+    aliases("pong", "latencia", "p"),
     interaction_context = "Guild",
-    category = "Utility"
+    category = "Utilidades"
 )]
 pub async fn ping(ctx: Context<'_>) -> Result<(), Error> {
     let start = Instant::now();
 
-    let msg = ctx.say("🏓 Pinging...").await?;
+    let msg = ctx
+        .say(pretty_message(icon::BELL, "Verificando..."))
+        .await?;
     let elapsed = start.elapsed();
 
     let manager = ctx.data().shard_manager.clone();
@@ -22,15 +25,21 @@ pub async fn ping(ctx: Context<'_>) -> Result<(), Error> {
         .and_then(|runner| runner.latency)
         .unwrap_or_default();
 
-    msg.edit(
-        ctx,
-        poise::CreateReply::default().content(format!(
-            "🏓 Pong!\nWebSocket latency: {} ms\nAPI latency: {} ms",
-            latency.as_millis(),
-            elapsed.as_millis()
-        )),
-    )
-    .await?;
+    let content = format!(
+        "{}\n{}\n{}",
+        pretty_message(icon::CHECK, "Pong!"),
+        pretty_message(
+            icon::RSS,
+            format!("Latência WebSocket: {} ms", latency.as_millis())
+        ),
+        pretty_message(
+            icon::RSS,
+            format!("Latência API: {} ms", elapsed.as_millis())
+        ),
+    );
+
+    msg.edit(ctx, poise::CreateReply::default().content(content))
+        .await?;
 
     Ok(())
 }

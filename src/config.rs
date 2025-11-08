@@ -1,11 +1,5 @@
 use crate::fumo::{Data, Error};
 use poise::serenity_prelude as serenity;
-use std::env;
-
-/// Fetches the Discord bot token from environment variables.
-pub fn discord_token() -> Result<String, env::VarError> {
-    env::var("DISCORD_TOKEN")
-}
 
 /// Declares which gateway intents the bot subscribes to.
 pub fn gateway_intents() -> serenity::GatewayIntents {

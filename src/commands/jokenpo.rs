@@ -1,7 +1,6 @@
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
-use rand::seq::SliceRandom;
-use rand::thread_rng;
+use rand::prelude::IndexedRandom;
 use serenity::builder::CreateInteractionResponseMessage;
 use serenity::collector::ComponentInteractionCollector;
 use serenity::{CreateActionRow, CreateButton};
@@ -27,9 +26,9 @@ impl Move {
 
     fn label(self) -> &'static str {
         match self {
-            Move::Rock => "🪨 Rock",
-            Move::Paper => "📄 Paper",
-            Move::Scissors => "✂️ Scissors",
+            Move::Rock => "🪨 Pedra",
+            Move::Paper => "📄 Papel",
+            Move::Scissors => "✂️ Tesoura",
         }
     }
 
@@ -50,19 +49,19 @@ impl Move {
 impl fmt::Display for Move {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Move::Rock => write!(f, "🪨 Rock"),
-            Move::Paper => write!(f, "📄 Paper"),
-            Move::Scissors => write!(f, "✂️ Scissors"),
+            Move::Rock => write!(f, "🪨 Pedra"),
+            Move::Paper => write!(f, "📄 Papel"),
+            Move::Scissors => write!(f, "✂️ Tesoura"),
         }
     }
 }
 
-/// Play rock-paper-scissors against me!
+/// Jogue pedra, papel ou tesoura contra mim!
 #[poise::command(
     slash_command,
     prefix_command,
     interaction_context = "Guild",
-    category = "Games"
+    category = "Jogos"
 )]
 pub async fn jokenpo(ctx: Context<'_>) -> Result<(), Error> {
     let buttons = Move::ALL
@@ -74,7 +73,7 @@ pub async fn jokenpo(ctx: Context<'_>) -> Result<(), Error> {
     let prompt = ctx
         .send(
             poise::CreateReply::default()
-                .content("JoKenPo! Choose your move:")
+                .content("JoKenPo! Escolha sua jogada:")
                 .components(components),
         )
         .await?;
@@ -91,7 +90,7 @@ pub async fn jokenpo(ctx: Context<'_>) -> Result<(), Error> {
         Some(interaction) => {
             let Some(user_move) = Move::from_custom_id(&interaction.data.custom_id) else {
                 let response = CreateInteractionResponseMessage::new()
-                    .content("Unknown move received. Please try again.")
+                    .content("Jogada desconhecida recebida. Por favor, tente novamente.")
                     .components(Vec::new());
 
                 interaction
@@ -104,23 +103,23 @@ pub async fn jokenpo(ctx: Context<'_>) -> Result<(), Error> {
             };
 
             let bot_move = {
-                let mut rng = thread_rng();
+                let mut rng = rand::rng();
                 *Move::ALL
                     .choose(&mut rng)
                     .expect("Move list should not be empty")
             };
 
             let outcome = if user_move == bot_move {
-                "It's a tie!"
+                "Empate!"
             } else if user_move.beats(bot_move) {
-                "You win!"
+                "Você venceu!"
             } else {
-                "I win!"
+                "Eu venci!"
             };
 
             let response = CreateInteractionResponseMessage::new()
                 .content(format!(
-                    "You chose {}. I chose {}. {}",
+                    "Você escolheu {}. Eu escolhi {}. {}",
                     user_move, bot_move, outcome
                 ))
                 .components(Vec::new());
@@ -137,7 +136,7 @@ pub async fn jokenpo(ctx: Context<'_>) -> Result<(), Error> {
                 .edit(
                     ctx,
                     poise::CreateReply::default()
-                        .content("JoKenPo timed out. Try again when you're ready!")
+                        .content("JoKenPo expirou. Tente novamente quando estiver pronto!")
                         .components(Vec::new()),
                 )
                 .await?;
