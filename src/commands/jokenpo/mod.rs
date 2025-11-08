@@ -1,10 +1,12 @@
 use crate::{
     Context, Error,
     constants::{colors, icon},
-    functions::pretty_message::pretty_message,
-    functions::prompt::{
-        ConfirmationMessageHandle, ConfirmationOutcome, ConfirmationPromptOptions,
-        confirmation_prompt,
+    functions::ui::{
+        pretty_message::pretty_message,
+        prompt::{
+            ConfirmationMessageHandle, ConfirmationOutcome, ConfirmationPromptOptions,
+            confirmation_prompt,
+        },
     },
 };
 use poise::serenity_prelude::{self as serenity, Mentionable};

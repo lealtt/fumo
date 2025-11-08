@@ -14,9 +14,7 @@ impl<'a> CommandFinder<'a> {
         Self { ctx }
     }
 
-    pub fn get_all_commands(
-        &self,
-    ) -> Vec<&'a poise::Command<crate::Data, crate::Error>> {
+    pub fn get_all_commands(&self) -> Vec<&'a poise::Command<crate::Data, crate::Error>> {
         self.ctx
             .framework()
             .options()
@@ -57,7 +55,10 @@ impl<'a> CommandFinder<'a> {
             }
 
             let cmd_matches = cmd.name.to_ascii_lowercase() == needle
-                || cmd.aliases.iter().any(|alias| alias.to_ascii_lowercase() == needle);
+                || cmd
+                    .aliases
+                    .iter()
+                    .any(|alias| alias.to_ascii_lowercase() == needle);
 
             if cmd_matches {
                 return Some(CommandInfo {
@@ -83,7 +84,10 @@ impl<'a> CommandFinder<'a> {
                     }
 
                     let subcmd_matches = subcmd.name.to_ascii_lowercase() == needle
-                        || subcmd.aliases.iter().any(|alias| alias.to_ascii_lowercase() == needle);
+                        || subcmd
+                            .aliases
+                            .iter()
+                            .any(|alias| alias.to_ascii_lowercase() == needle);
 
                     if subcmd_matches {
                         return Some(CommandInfo {

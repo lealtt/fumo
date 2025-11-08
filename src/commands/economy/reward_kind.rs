@@ -1,5 +1,5 @@
 use crate::constants::icon;
-use crate::functions::time::ResetPeriod;
+use crate::functions::time::time::ResetPeriod;
 
 #[derive(Clone, Copy)]
 pub enum RewardKind {

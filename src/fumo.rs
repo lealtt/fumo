@@ -5,6 +5,24 @@ use sqlx::SqlitePool;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+pub fn gateway_intents() -> serenity::GatewayIntents {
+    serenity::GatewayIntents::GUILDS
+        | serenity::GatewayIntents::GUILD_MESSAGES
+        | serenity::GatewayIntents::MESSAGE_CONTENT
+}
+
+pub fn prefix_options() -> poise::PrefixFrameworkOptions<Data, Error> {
+    poise::PrefixFrameworkOptions {
+        prefix: Some("?".into()),
+        additional_prefixes: vec![
+            poise::Prefix::Literal("-"),
+            poise::Prefix::Literal("f!"),
+            poise::Prefix::Literal("."),
+        ],
+        ..Default::default()
+    }
+}
+
 pub struct Data {
     pub shard_manager: Arc<serenity::ShardManager>,
     pub database: Arc<Mutex<SqlitePool>>,
@@ -19,7 +37,7 @@ impl TypeMapKey for ShardManagerContainer {
     type Value = Arc<serenity::ShardManager>;
 }
 
-/// Builds the Poise framework with all commands and the provided prefix options.
+/// Builds the Poise framework with all commands and the provided prefix options
 pub fn build_framework(
     prefix_options: poise::PrefixFrameworkOptions<Data, Error>,
     database: SqlitePool,
@@ -70,7 +88,7 @@ async fn setup_framework(
 ) -> Result<Data, Error> {
     register_commands(ctx, framework).await?;
     let shard_manager = extract_shard_manager(ctx).await;
-    functions::avatar::spawn_avatar_rotation_task(ctx.http.clone());
+    functions::bot::avatar::spawn_avatar_rotation_task(ctx.http.clone());
     println!("{} is connected and ready", ready.user.display_name());
 
     Ok(Data {

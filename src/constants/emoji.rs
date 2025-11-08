@@ -1,4 +1,4 @@
-use serenity::all::{Colour, EmojiId, ReactionType};
+use serenity::all::{EmojiId, ReactionType};
 use std::fmt;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -50,11 +50,4 @@ pub mod icon {
     pub const TIMER: CustomEmoji = CustomEmoji::new(1436442461022195753);
     pub const RSS: CustomEmoji = CustomEmoji::new(1436674873433915412);
     pub const HASTAG: CustomEmoji = CustomEmoji::new(1434940827263832096);
-}
-
-pub mod colors {
-    use super::Colour;
-
-    pub const MINT: Colour = Colour::new(0x4ECCA3);
-    pub const MOON: Colour = Colour::new(0xA6B1E1);
 }

@@ -1,7 +1,7 @@
 use crate::{
     Context, Error,
     constants::{colors, icon},
-    functions::pretty_message::pretty_message,
+    functions::ui::pretty_message::pretty_message,
 };
 use poise::serenity_prelude as serenity;
 use serenity::builder::CreateAutocompleteResponse;

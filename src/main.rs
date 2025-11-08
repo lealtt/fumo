@@ -19,13 +19,11 @@ limitations under the License.
 use dotenvy::dotenv;
 
 mod commands;
-mod config;
 mod constants;
 mod database;
 mod env;
 mod fumo;
 mod functions;
-mod models;
 
 pub use fumo::{Context, Data, Error};
 
@@ -34,8 +32,8 @@ async fn main() -> Result<(), fumo::Error> {
     dotenv().ok();
 
     let token = env::discord_token()?;
-    let intents = config::gateway_intents();
-    let prefix_options = config::prefix_options();
+    let intents = fumo::gateway_intents();
+    let prefix_options = fumo::prefix_options();
     let database = database::connect()
         .await
         .map_err(|err| -> fumo::Error { Box::new(err) })?;

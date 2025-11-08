@@ -1,6 +1,6 @@
 use super::player_state::PlayerState;
 use crate::constants::icon;
-use crate::functions::pretty_message::pretty_message;
+use crate::functions::ui::pretty_message::pretty_message;
 use poise::serenity_prelude as serenity;
 use serenity::Mentionable;
 

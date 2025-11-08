@@ -1,4 +1,4 @@
-use crate::{Context, Error, constants::icon, functions::pretty_message::pretty_message};
+use crate::{Context, Error, constants::icon, functions::ui::pretty_message::pretty_message};
 use std::time::Instant;
 
 /// Responde com pong 🏓!

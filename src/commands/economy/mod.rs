@@ -1,12 +1,11 @@
 use crate::{
     Context, Error,
     constants::{colors, icon},
-    database,
+    database::{self, RewardStateModel, UserModel},
     functions::{
-        pretty_message::pretty_message,
         time::{self, ResetTime},
+        ui::pretty_message::pretty_message,
     },
-    models::{RewardStateModel, UserModel},
 };
 use chrono::{DateTime, Utc};
 use poise::serenity_prelude as serenity;

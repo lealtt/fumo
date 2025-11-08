@@ -1,7 +1,7 @@
 use crate::{
     Context, Error,
     constants::{colors, icon},
-    functions::{
+    functions::ui::{
         pretty_message::pretty_message,
         prompt::{
             ConfirmationMessageHandle, ConfirmationOutcome, ConfirmationPromptOptions,
