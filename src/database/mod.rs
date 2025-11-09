@@ -1,5 +1,6 @@
 pub mod models;
 pub mod reward;
+pub mod transaction;
 pub mod user;
 
 use crate::env;
@@ -19,7 +20,11 @@ pub async fn connect() -> Result<SqlitePool, SqlxError> {
     Ok(pool)
 }
 
-pub use models::{RewardStateModel, UserModel};
+pub use models::{CurrencyTransactionModel, RewardStateModel, UserModel};
 
 pub use reward::{get_all as get_all_reward_states, upsert as upsert_reward_state};
+pub use transaction::{
+    delete_by_id as delete_currency_transaction, insert as insert_currency_transaction,
+    list_recent_by_user as list_currency_transactions,
+};
 pub use user::{get_or_create as get_or_create_user, update_balance as update_user_balance};

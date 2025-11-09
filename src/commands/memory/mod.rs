@@ -2,6 +2,7 @@ use crate::{
     Context, Error,
     constants::{colors, icon},
     functions::ui::{
+        component::{send_ephemeral_response, update_component_message},
         pretty_message::pretty_message,
         prompt::{
             ConfirmationMessageHandle, ConfirmationOutcome, ConfirmationPromptOptions,
@@ -10,7 +11,7 @@ use crate::{
     },
 };
 use poise::serenity_prelude::{self as serenity, Mentionable};
-use serenity::builder::{CreateInteractionResponseMessage, EditMessage};
+use serenity::builder::EditMessage;
 use serenity::collector::ComponentInteractionCollector;
 use serenity::{CreateActionRow, CreateButton};
 use std::time::Duration;
@@ -171,10 +172,10 @@ async fn run_game(
         };
 
         if !state.mode.is_allowed(interaction.user.id) {
-            send_ephemeral(
-                ctx,
+            send_ephemeral_response(
+                &ctx,
                 &interaction,
-                &pretty_message(
+                pretty_message(
                     icon::ERROR,
                     "Somente os participantes do jogo podem interagir com estes botões.",
                 ),
@@ -184,20 +185,20 @@ async fn run_game(
         }
 
         if state.locked {
-            send_ephemeral(
-                ctx,
+            send_ephemeral_response(
+                &ctx,
                 &interaction,
-                &pretty_message(icon::TIMER, "Espere um instante enquanto escondo as peças."),
+                pretty_message(icon::TIMER, "Espere um instante enquanto escondo as peças."),
             )
             .await?;
             continue;
         }
 
         if !state.is_selectable(tile_index) {
-            send_ephemeral(
-                ctx,
+            send_ephemeral_response(
+                &ctx,
                 &interaction,
-                &pretty_message(icon::ERROR, "Esse botão já foi utilizado. Escolha outro."),
+                pretty_message(icon::ERROR, "Esse botão já foi utilizado. Escolha outro."),
             )
             .await?;
             continue;
@@ -205,20 +206,20 @@ async fn run_game(
 
         if state.pending.is_none() {
             if !state.mode.is_current_player(interaction.user.id) {
-                send_ephemeral(
-                    ctx,
+                send_ephemeral_response(
+                    &ctx,
                     &interaction,
-                    &pretty_message(icon::BELL, "Aguarde sua vez para jogar."),
+                    pretty_message(icon::BELL, "Aguarde sua vez para jogar."),
                 )
                 .await?;
                 continue;
             }
             state.pending_owner = Some(interaction.user.id);
         } else if state.pending_owner != Some(interaction.user.id) {
-            send_ephemeral(
-                ctx,
+            send_ephemeral_response(
+                &ctx,
                 &interaction,
-                &pretty_message(icon::ERROR, "Espere o jogador atual finalizar a tentativa."),
+                pretty_message(icon::ERROR, "Espere o jogador atual finalizar a tentativa."),
             )
             .await?;
             continue;
@@ -227,7 +228,7 @@ async fn run_game(
         match state.select(tile_index) {
             SelectionResult::FirstReveal => {
                 let (embed, components) = render_game(&state, None);
-                update_message(ctx, &interaction, embed, components).await?;
+                update_component_message(&ctx, &interaction, embed, components).await?;
             }
             SelectionResult::Matched { finished } => {
                 state.mode.register_match(interaction.user.id);
@@ -237,7 +238,7 @@ async fn run_game(
                 ));
 
                 let (embed, components) = render_game(&state, None);
-                update_message(ctx, &interaction, embed, components).await?;
+                update_component_message(&ctx, &interaction, embed, components).await?;
 
                 if finished {
                     state.set_status(state.mode.finish_message(state.attempts));
@@ -264,7 +265,7 @@ async fn run_game(
 
                 {
                     let (embed, components) = render_game(&state, Some(pair));
-                    update_message(ctx, &interaction, embed, components).await?;
+                    update_component_message(&ctx, &interaction, embed, components).await?;
                 }
 
                 sleep(MISMATCH_DELAY).await;
@@ -303,42 +304,6 @@ async fn run_game(
         )
         .await?;
 
-    Ok(())
-}
-
-async fn send_ephemeral(
-    ctx: Context<'_>,
-    interaction: &serenity::ComponentInteraction,
-    message: &str,
-) -> Result<(), Error> {
-    let response = CreateInteractionResponseMessage::new()
-        .content(message)
-        .ephemeral(true);
-
-    interaction
-        .create_response(
-            ctx.serenity_context(),
-            serenity::CreateInteractionResponse::Message(response),
-        )
-        .await?;
-    Ok(())
-}
-
-async fn update_message(
-    ctx: Context<'_>,
-    interaction: &serenity::ComponentInteraction,
-    embed: serenity::CreateEmbed,
-    components: Vec<CreateActionRow>,
-) -> Result<(), Error> {
-    let response = CreateInteractionResponseMessage::new()
-        .embed(embed)
-        .components(components);
-    interaction
-        .create_response(
-            ctx.serenity_context(),
-            serenity::CreateInteractionResponse::UpdateMessage(response),
-        )
-        .await?;
     Ok(())
 }
 

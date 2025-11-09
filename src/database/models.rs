@@ -11,6 +11,18 @@ pub struct UserModel {
 }
 
 #[derive(Clone, Debug, PartialEq, FromRow)]
+pub struct CurrencyTransactionModel {
+    pub id: i32,
+    pub user_id: i32,
+    pub amount: i64,
+    pub balance_after: i64,
+    pub currency: String,
+    pub kind: String,
+    pub context: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug, PartialEq, FromRow)]
 pub struct RewardStateModel {
     pub id: i32,
     pub user_id: i32,

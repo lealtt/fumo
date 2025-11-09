@@ -1,16 +1,17 @@
 use crate::{
     Context, Error,
     constants::{colors, icon},
-    database::{self, RewardStateModel, UserModel},
+    database::{self, CurrencyTransactionModel, RewardStateModel, UserModel},
     functions::{
+        format::format_currency,
         time::{self, ResetTime},
-        ui::pretty_message::pretty_message,
+        ui::{pagination::paginate, pretty_message::pretty_message},
     },
 };
 use chrono::{DateTime, Utc};
 use poise::serenity_prelude as serenity;
 use rand::Rng;
-use serenity::builder::CreateInteractionResponseMessage;
+use serenity::builder::{CreateEmbedFooter, CreateInteractionResponseMessage};
 use serenity::collector::ComponentInteractionCollector;
 use serenity::{CreateActionRow, CreateButton};
 use std::time::Duration;
@@ -23,6 +24,9 @@ const RESET_CONFIG: ResetTime = ResetTime {
     minute: 0,
     timezone_offset_secs: -3 * 60 * 60,
 };
+const TRANSACTION_FETCH_LIMIT: i64 = 50;
+const TRANSACTION_PAGE_SIZE: usize = 5;
+const TRANSACTION_TIMEOUT: Duration = Duration::from_secs(180);
 
 /// Gerencie sua economia e recompensas.
 #[poise::command(
@@ -31,7 +35,7 @@ const RESET_CONFIG: ResetTime = ResetTime {
     rename = "economia",
     category = "Economia",
     interaction_context = "Guild",
-    subcommands("rewards", "balance")
+    subcommands("rewards", "balance", "transactions")
 )]
 pub async fn economy(_: Context<'_>) -> Result<(), Error> {
     Ok(())
@@ -100,6 +104,40 @@ pub async fn balance(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+/// Consulte seu histórico recente de transações.
+#[poise::command(
+    slash_command,
+    prefix_command,
+    rename = "transações",
+    category = "Economia"
+)]
+pub async fn transactions(ctx: Context<'_>) -> Result<(), Error> {
+    ctx.defer_ephemeral().await?;
+
+    let discord_id = ctx.author().id.get() as i64;
+    let entries = {
+        let db = ctx.data().database.lock().await;
+        let user = database::get_or_create_user(&db, discord_id).await?;
+        database::list_currency_transactions(&db, user.id, TRANSACTION_FETCH_LIMIT).await?
+    };
+
+    if entries.is_empty() {
+        ctx.send(
+            poise::CreateReply::default()
+                .ephemeral(true)
+                .content(pretty_message(
+                    icon::HOUSE,
+                    "Ainda não há transações registradas para sua conta.",
+                )),
+        )
+        .await?;
+        return Ok(());
+    }
+
+    let pages = build_transaction_pages(&entries);
+    paginate_transaction_pages(ctx, pages).await
+}
+
 /// Resgate suas recompensas!
 #[poise::command(
     slash_command,
@@ -164,6 +202,19 @@ pub async fn rewards(ctx: Context<'_>) -> Result<(), Error> {
                 let db = ctx.data().database.lock().await;
                 user = database::update_user_balance(&db, user.id, user.dollars, user.diamonds)
                     .await?;
+                if money != 0 {
+                    let context = format!("reward:{}", kind.db_name());
+                    database::insert_currency_transaction(
+                        &db,
+                        user.id,
+                        money,
+                        user.dollars,
+                        "dollars",
+                        "reward_claim",
+                        Some(context),
+                    )
+                    .await?;
+                }
                 let new_state = database::upsert_reward_state(
                     &db,
                     user.id,
@@ -343,4 +394,102 @@ fn format_cooldown_message(next_time: DateTime<Utc>) -> String {
         absolute,
         relative
     )
+}
+
+fn build_transaction_pages(entries: &[CurrencyTransactionModel]) -> Vec<String> {
+    entries
+        .chunks(TRANSACTION_PAGE_SIZE)
+        .map(|chunk| {
+            chunk
+                .iter()
+                .map(format_transaction_entry)
+                .collect::<Vec<_>>()
+                .join("\n\n")
+        })
+        .collect()
+}
+
+fn format_transaction_entry(entry: &CurrencyTransactionModel) -> String {
+    let direction_icon = if entry.amount >= 0 {
+        icon::PLUS
+    } else {
+        icon::MINUS
+    };
+
+    let currency_label = describe_currency(&entry.currency);
+    let amount_display = format_currency(entry.amount.abs());
+    let balance_display = format_currency(entry.balance_after);
+    let timestamp = DateTime::parse_from_rfc3339(&entry.created_at)
+        .ok()
+        .map(|dt| time::describe_relative(dt.with_timezone(&Utc)))
+        .unwrap_or_else(|| "momento desconhecido".to_string());
+
+    let mut lines = vec![
+        format!(
+            "{} **{} {}**",
+            direction_icon, amount_display, currency_label
+        ),
+        format!("Saldo após: **{} {}**", balance_display, currency_label),
+        format!("Tipo: `{}` • {}", entry.kind, timestamp),
+    ];
+
+    if let Some(context) = &entry.context {
+        if !context.is_empty() {
+            lines.push(format!("Contexto: _{}_ ", context));
+        }
+    }
+
+    lines.join("\n")
+}
+
+fn describe_currency(code: &str) -> String {
+    match code {
+        "dollars" => "moedas".to_string(),
+        "diamonds" => "diamantes".to_string(),
+        other => other.to_string(),
+    }
+}
+
+async fn paginate_transaction_pages(ctx: Context<'_>, pages: Vec<String>) -> Result<(), Error> {
+    if pages.is_empty() {
+        return Ok(());
+    }
+
+    let total_pages = pages.len();
+    let author_name = ctx.author().name.clone();
+
+    paginate(
+        ctx,
+        total_pages,
+        TRANSACTION_TIMEOUT,
+        true,
+        move |current_page, total_pages| {
+            let embed = build_transactions_embed(
+                &author_name,
+                &pages[current_page],
+                current_page,
+                total_pages,
+            );
+            (embed, Vec::new())
+        },
+    )
+    .await
+}
+
+fn build_transactions_embed(
+    author_name: &str,
+    page_content: &str,
+    current_page: usize,
+    total_pages: usize,
+) -> serenity::CreateEmbed {
+    serenity::CreateEmbed::new()
+        .title(format!("{} Histórico de {}", icon::HOUSE, author_name))
+        .colour(colors::MOON)
+        .description(page_content.to_string())
+        .footer(CreateEmbedFooter::new(format!(
+            "Página {}/{} • últimas {} transações",
+            current_page + 1,
+            total_pages,
+            TRANSACTION_FETCH_LIMIT
+        )))
 }

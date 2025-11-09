@@ -1,4 +1,4 @@
-use crate::{commands, functions};
+use crate::commands;
 use poise::serenity_prelude as serenity;
 use serenity::prelude::TypeMapKey;
 use sqlx::SqlitePool;
@@ -88,7 +88,8 @@ async fn setup_framework(
 ) -> Result<Data, Error> {
     register_commands(ctx, framework).await?;
     let shard_manager = extract_shard_manager(ctx).await;
-    functions::bot::avatar::spawn_avatar_rotation_task(ctx.http.clone());
+    // TODO: re-enable automatic avatar rotation on startup when the feature is stable
+    // functions::bot::avatar::spawn_avatar_rotation_task(ctx.http.clone());
     println!("{} is connected and ready", ready.user.display_name());
 
     Ok(Data {

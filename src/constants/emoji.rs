@@ -50,4 +50,9 @@ pub mod icon {
     pub const TIMER: CustomEmoji = CustomEmoji::new(1436442461022195753);
     pub const RSS: CustomEmoji = CustomEmoji::new(1436674873433915412);
     pub const HASTAG: CustomEmoji = CustomEmoji::new(1434940827263832096);
+    pub const HOUSE: CustomEmoji = CustomEmoji::new(1437055578047516722);
+    pub const CARET_RIGHT: CustomEmoji = CustomEmoji::new(1437055575790981162);
+    pub const CARET_LEFT: CustomEmoji = CustomEmoji::new(1437055573689372672);
+    pub const CARET_DOUBLE_RIGHT: CustomEmoji = CustomEmoji::new(1437055570417811507);
+    pub const CARET_DOUBLE_LEFT: CustomEmoji = CustomEmoji::new(1437055566500331593);
 }

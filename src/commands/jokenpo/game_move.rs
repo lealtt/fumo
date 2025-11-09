@@ -1,3 +1,4 @@
+use rand::Rng;
 use std::fmt;
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -37,6 +38,11 @@ impl GameMove {
 
     pub fn from_custom_id(id: &str) -> Option<Self> {
         GameMove::ALL.into_iter().find(|mv| mv.custom_id() == id)
+    }
+
+    pub fn random<R: Rng + ?Sized>(rng: &mut R) -> Self {
+        let idx = rng.random_range(0..Self::ALL.len());
+        Self::ALL[idx]
     }
 }
 

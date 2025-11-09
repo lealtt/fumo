@@ -2,6 +2,7 @@ use crate::{
     Context, Error,
     constants::{colors, icon},
     functions::ui::{
+        component::{send_ephemeral_response, update_component_message},
         pretty_message::pretty_message,
         prompt::{
             ConfirmationMessageHandle, ConfirmationOutcome, ConfirmationPromptOptions,
@@ -10,8 +11,7 @@ use crate::{
     },
 };
 use poise::serenity_prelude::{self as serenity, Mentionable};
-use rand::prelude::IndexedRandom;
-use serenity::builder::{CreateInteractionResponseMessage, EditMessage};
+use serenity::builder::EditMessage;
 use serenity::collector::ComponentInteractionCollector;
 use serenity::{CreateActionRow, CreateButton};
 use std::{collections::HashMap, time::Duration};
@@ -38,11 +38,18 @@ pub async fn jokenpo(_: Context<'_>) -> Result<(), Error> {
 /// Enfrente a Fumo e teste sua sorte!
 #[poise::command(slash_command, prefix_command, category = "Jogos")]
 pub async fn fumo(ctx: Context<'_>) -> Result<(), Error> {
+    let intro_embed = serenity::CreateEmbed::new()
+        .title("🪨 JoKenPo - Solo")
+        .colour(colors::MOON)
+        .description(pretty_message(
+            icon::BELL,
+            "Escolha uma das opções abaixo para me enfrentar.",
+        ));
     let prompt = ctx
         .send(
             poise::CreateReply::default()
-                .content(pretty_message(icon::BELL, "JoKenPo! Escolha sua jogada:"))
-                .components(action_rows(false)),
+                .embed(intro_embed)
+                .components(action_rows(false, &[])),
         )
         .await?;
 
@@ -57,24 +64,16 @@ pub async fn fumo(ctx: Context<'_>) -> Result<(), Error> {
     match interaction {
         Some(interaction) => {
             let Some(user_move) = GameMove::from_custom_id(&interaction.data.custom_id) else {
-                let response = CreateInteractionResponseMessage::new()
-                    .content("Jogada desconhecida recebida. Por favor, tente novamente.")
-                    .components(Vec::new());
-
-                interaction
-                    .create_response(
-                        ctx.serenity_context(),
-                        serenity::CreateInteractionResponse::UpdateMessage(response),
-                    )
-                    .await?;
+                let embed = serenity::CreateEmbed::new()
+                    .colour(colors::MOON)
+                    .description("Jogada desconhecida recebida. Por favor, tente novamente.");
+                update_component_message(&ctx, &interaction, embed, Vec::new()).await?;
                 return Ok(());
             };
 
             let bot_move = {
                 let mut rng = rand::rng();
-                *GameMove::ALL
-                    .choose(&mut rng)
-                    .expect("Move list should not be empty")
+                GameMove::random(&mut rng)
             };
 
             let outcome = if user_move == bot_move {
@@ -85,32 +84,36 @@ pub async fn fumo(ctx: Context<'_>) -> Result<(), Error> {
                 "Eu venci!"
             };
 
-            let response = CreateInteractionResponseMessage::new()
-                .content(pretty_message(
+            let embed = serenity::CreateEmbed::new()
+                .colour(colors::MINT)
+                .description(pretty_message(
                     icon::CHECK,
                     format!(
                         "Você escolheu {}. Eu escolhi {}. {}",
                         user_move, bot_move, outcome
                     ),
-                ))
-                .components(action_rows(true));
-
-            interaction
-                .create_response(
-                    ctx.serenity_context(),
-                    serenity::CreateInteractionResponse::UpdateMessage(response),
-                )
-                .await?;
+                ));
+            update_component_message(
+                &ctx,
+                &interaction,
+                embed,
+                action_rows(true, &[user_move, bot_move]),
+            )
+            .await?;
         }
         None => {
+            let timeout_embed = serenity::CreateEmbed::new()
+                .title("🪨 JoKenPo — Solo")
+                .colour(colors::MOON)
+                .description(pretty_message(
+                    icon::ERROR,
+                    "JoKenPo expirou. Tente novamente quando estiver pronto!",
+                ));
             prompt
                 .edit(
                     ctx,
                     poise::CreateReply::default()
-                        .content(pretty_message(
-                            icon::ERROR,
-                            "JoKenPo expirou. Tente novamente quando estiver pronto!",
-                        ))
+                        .embed(timeout_embed)
                         .components(Vec::new()),
                 )
                 .await?;
@@ -199,7 +202,7 @@ async fn start_versus_match(
             .send(
                 poise::CreateReply::default()
                     .embed(versus_waiting_embed(&challenger, &opponent))
-                    .components(action_rows(false)),
+                    .components(action_rows(false, &[])),
             )
             .await?;
         let message = reply.message().await?;
@@ -214,7 +217,7 @@ async fn start_versus_match(
                 EditMessage::new()
                     .content("")
                     .embed(versus_waiting_embed(&challenger, &opponent))
-                    .components(action_rows(false)),
+                    .components(action_rows(false, &[])),
             )
             .await?;
     }
@@ -242,13 +245,10 @@ async fn start_versus_match(
         };
 
         if interaction.user.id != challenger.id && interaction.user.id != opponent.id {
-            send_ephemeral_message(
-                ctx,
+            send_ephemeral_response(
+                &ctx,
                 &interaction,
-                pretty_message(
-                    icon::ERROR,
-                    "Apenas os desafiantes podem usar estes botões.",
-                ),
+                pretty_message(icon::ERROR, "Apenas os jogadores podem usar estes botões."),
             )
             .await?;
             continue;
@@ -259,8 +259,8 @@ async fn start_versus_match(
         };
 
         if selections.contains_key(&interaction.user.id) {
-            send_ephemeral_message(
-                ctx,
+            send_ephemeral_response(
+                &ctx,
                 &interaction,
                 pretty_message(icon::ERROR, "Você já escolheu sua jogada."),
             )
@@ -270,8 +270,8 @@ async fn start_versus_match(
 
         selections.insert(interaction.user.id, chosen_move);
 
-        send_ephemeral_message(
-            ctx,
+        send_ephemeral_response(
+            &ctx,
             &interaction,
             pretty_message(icon::CHECK, format!("Jogada registrada: {}", chosen_move)),
         )
@@ -329,36 +329,21 @@ async fn start_versus_match(
             serenity::builder::EditMessage::new()
                 .content("")
                 .embed(embed)
-                .components(action_rows(true)),
+                .components(action_rows(true, &[challenger_move, opponent_move])),
         )
         .await?;
 
     Ok(())
 }
 
-async fn send_ephemeral_message(
-    ctx: Context<'_>,
-    interaction: &serenity::ComponentInteraction,
-    content: String,
-) -> Result<(), Error> {
-    let response = CreateInteractionResponseMessage::new()
-        .content(content)
-        .ephemeral(true);
-
-    interaction
-        .create_response(
-            ctx.serenity_context(),
-            serenity::CreateInteractionResponse::Message(response),
-        )
-        .await?;
-    Ok(())
-}
-
-fn action_rows(disabled: bool) -> Vec<CreateActionRow> {
+fn action_rows(disabled: bool, highlights: &[GameMove]) -> Vec<CreateActionRow> {
     let buttons = GameMove::ALL
         .into_iter()
         .map(|mv| {
-            let style = if disabled {
+            let is_highlighted = highlights.iter().any(|selected| *selected == mv);
+            let style = if is_highlighted {
+                serenity::ButtonStyle::Success
+            } else if disabled {
                 serenity::ButtonStyle::Secondary
             } else {
                 serenity::ButtonStyle::Primary

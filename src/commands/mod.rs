@@ -5,6 +5,7 @@ pub mod economy;
 pub mod help;
 pub mod jokenpo;
 pub mod memory;
+pub mod mines;
 pub mod ping;
 
 pub fn load_all() -> Vec<poise::Command<Data, Error>> {
@@ -15,5 +16,6 @@ pub fn load_all() -> Vec<poise::Command<Data, Error>> {
         bot::bot(),
         economy::economy(),
         memory::memory(),
+        mines::mines(),
     ]
 }
