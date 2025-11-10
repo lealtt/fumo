@@ -38,7 +38,7 @@ async fn send_blacklist_notice(ctx: Context<'_>, entry: &BlacklistEntryModel) ->
     }
 
     description.push(pretty_message(
-        icon::BELL,
+        icon::HAMMER,
         format!("Responsável: {}", mention(entry.moderator_id)),
     ));
     let registered_at = time::describe_relative_from_str(&entry.created_at)
