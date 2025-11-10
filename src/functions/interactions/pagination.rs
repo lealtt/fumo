@@ -14,6 +14,7 @@ pub async fn paginate<F>(
     total_pages: usize,
     timeout: Duration,
     ephemeral: bool,
+    initial_page: usize,
     mut build_page: F,
 ) -> Result<(), Error>
 where
@@ -23,7 +24,7 @@ where
         return Ok(());
     }
 
-    let mut current_page = 0_usize;
+    let mut current_page = initial_page.min(total_pages - 1);
     let buttons = PaginationButtons::new(ctx.id());
 
     let (embed, mut components) = build_page(current_page, total_pages);

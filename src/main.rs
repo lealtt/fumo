@@ -22,6 +22,7 @@ mod commands;
 mod constants;
 mod database;
 mod env;
+mod events;
 mod fumo;
 mod functions;
 
@@ -34,10 +35,11 @@ async fn main() -> Result<(), fumo::Error> {
     let token = env::discord_token()?;
     let intents = fumo::gateway_intents();
     let prefix_options = fumo::prefix_options();
+    let owner_ids = env::owner_ids()?;
     let database = database::connect()
         .await
         .map_err(|err| -> fumo::Error { Box::new(err) })?;
 
-    let framework = fumo::build_framework(prefix_options, database);
+    let framework = fumo::build_framework(prefix_options, database, owner_ids);
     fumo::run_client(token, intents, framework).await
 }

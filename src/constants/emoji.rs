@@ -55,4 +55,6 @@ pub mod icon {
     pub const CARET_LEFT: CustomEmoji = CustomEmoji::new(1437055573689372672);
     pub const CARET_DOUBLE_RIGHT: CustomEmoji = CustomEmoji::new(1437055570417811507);
     pub const CARET_DOUBLE_LEFT: CustomEmoji = CustomEmoji::new(1437055566500331593);
+    pub const GITHUB_LOGO: CustomEmoji = CustomEmoji::new(1437176262597541999);
+    pub const EMPTY: CustomEmoji = CustomEmoji::new(1434941722617708654);
 }

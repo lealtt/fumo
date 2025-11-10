@@ -1,4 +1,4 @@
-use crate::{Context, Error, constants::icon, functions::ui::pretty_message::pretty_message};
+use crate::{Context, Error, constants::icon, functions::format::pretty_message};
 use std::time::Instant;
 
 /// Responde com pong 🏓!
@@ -7,14 +7,13 @@ use std::time::Instant;
     prefix_command,
     aliases("pong", "latencia", "p"),
     interaction_context = "Guild",
-    category = "Utilidades"
+    category = "Utilidades",
+    on_error = "crate::commands::util::command_error_handler"
 )]
 pub async fn ping(ctx: Context<'_>) -> Result<(), Error> {
     let start = Instant::now();
 
-    let msg = ctx
-        .say(pretty_message(icon::BELL, "Verificando..."))
-        .await?;
+    let msg = ctx.say(pretty_message("🏓", "Pong!")).await?;
     let elapsed = start.elapsed();
 
     let manager = ctx.data().shard_manager.clone();

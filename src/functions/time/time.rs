@@ -21,7 +21,7 @@ impl ResetTime {
     }
 
     pub fn timezone_offset(&self) -> FixedOffset {
-        FixedOffset::west_opt(self.timezone_offset_secs).expect("valid timezone offset")
+        FixedOffset::east_opt(self.timezone_offset_secs).expect("valid timezone offset")
     }
 
     pub fn as_naive_time(&self) -> NaiveTime {
@@ -53,6 +53,13 @@ pub fn describe_absolute(target: DateTime<Utc>) -> String {
 pub fn describe_relative(target: DateTime<Utc>) -> String {
     let timestamp = target.timestamp();
     format!("<t:{timestamp}:R>")
+}
+
+/// Attempts to parse an RFC3339 timestamp and format it relatively for Discord embeds
+pub fn describe_relative_from_str(value: &str) -> Option<String> {
+    DateTime::parse_from_rfc3339(value)
+        .ok()
+        .map(|dt| describe_relative(dt.with_timezone(&Utc)))
 }
 
 /// Calculates the next reset from a reference date

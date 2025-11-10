@@ -1,21 +1,22 @@
 use crate::{Data, Error};
 
-pub mod bot;
+pub mod blacklist;
 pub mod economy;
 pub mod help;
 pub mod jokenpo;
 pub mod memory;
 pub mod mines;
 pub mod ping;
+pub mod util;
 
 pub fn load_all() -> Vec<poise::Command<Data, Error>> {
     vec![
         help::help(),
         ping::ping(),
         jokenpo::jokenpo(),
-        bot::bot(),
         economy::economy(),
         memory::memory(),
         mines::mines(),
+        blacklist::blacklist(),
     ]
 }

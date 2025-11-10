@@ -1,9 +1,8 @@
-use crate::commands;
+use crate::{commands, events, functions};
 use poise::serenity_prelude as serenity;
 use serenity::prelude::TypeMapKey;
 use sqlx::SqlitePool;
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use std::{collections::HashSet, sync::Arc};
 
 pub fn gateway_intents() -> serenity::GatewayIntents {
     serenity::GatewayIntents::GUILDS
@@ -25,7 +24,7 @@ pub fn prefix_options() -> poise::PrefixFrameworkOptions<Data, Error> {
 
 pub struct Data {
     pub shard_manager: Arc<serenity::ShardManager>,
-    pub database: Arc<Mutex<SqlitePool>>,
+    pub database: SqlitePool,
 }
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -41,9 +40,10 @@ impl TypeMapKey for ShardManagerContainer {
 pub fn build_framework(
     prefix_options: poise::PrefixFrameworkOptions<Data, Error>,
     database: SqlitePool,
+    owner_ids: Vec<u64>,
 ) -> poise::Framework<Data, Error> {
     poise::Framework::builder()
-        .options(framework_options(prefix_options))
+        .options(framework_options(prefix_options, owner_ids))
         .setup(move |ctx, ready, framework| {
             let database = database.clone();
             Box::pin(async move { setup_framework(ctx, ready, framework, database).await })
@@ -72,10 +72,21 @@ pub async fn run_client(
 
 fn framework_options(
     prefix_options: poise::PrefixFrameworkOptions<Data, Error>,
+    owner_ids: Vec<u64>,
 ) -> poise::FrameworkOptions<Data, Error> {
+    let owners: HashSet<serenity::UserId> =
+        owner_ids.into_iter().map(serenity::UserId::new).collect();
+    let initialize_owners = owners.is_empty();
+
     poise::FrameworkOptions {
         commands: commands::load_all(),
+        command_check: Some(|ctx| {
+            Box::pin(async move { functions::bot::blacklist::enforce_global_blacklist(ctx).await })
+        }),
+        event_handler: events::dispatch,
         prefix_options,
+        owners,
+        initialize_owners,
         ..Default::default()
     }
 }
@@ -94,7 +105,7 @@ async fn setup_framework(
 
     Ok(Data {
         shard_manager,
-        database: Arc::new(Mutex::new(database)),
+        database,
     })
 }
 

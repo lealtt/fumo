@@ -1,6 +1,6 @@
 use super::player_state::PlayerState;
 use crate::constants::icon;
-use crate::functions::ui::pretty_message::pretty_message;
+use crate::functions::format::{discord::bold, pretty_message};
 use poise::serenity_prelude as serenity;
 use serenity::Mentionable;
 
@@ -88,8 +88,11 @@ impl Mode {
             Mode::Versus { players, .. } => Some(pretty_message(
                 icon::HASTAG,
                 format!(
-                    "{}: **{}** • {}: **{}**",
-                    players[0].user.name, players[0].score, players[1].user.name, players[1].score
+                    "{}: {} • {}: {}",
+                    players[0].user.name,
+                    bold(players[0].score.to_string()),
+                    players[1].user.name,
+                    bold(players[1].score.to_string())
                 ),
             )),
         }
@@ -100,9 +103,9 @@ impl Mode {
             Mode::Solo { player } => pretty_message(
                 icon::CHECK,
                 format!(
-                    "{} completou todos os pares em **{}** tentativas!",
+                    "{} completou todos os pares em {} tentativas!",
                     player.user.mention(),
-                    attempts
+                    bold(attempts.to_string())
                 ),
             ),
             Mode::Versus { players, .. } => {
@@ -112,10 +115,10 @@ impl Mode {
                     pretty_message(
                         icon::HASTAG,
                         format!(
-                            "Empate! {} e {} terminaram com **{}** pares.",
+                            "Empate! {} e {} terminaram com {} pares.",
                             left.user.mention(),
                             right.user.mention(),
-                            left.score
+                            bold(left.score.to_string())
                         ),
                     )
                 } else {
@@ -127,9 +130,9 @@ impl Mode {
                     pretty_message(
                         icon::GIFT,
                         format!(
-                            "{} venceu com **{}** pares contra {} ({})!",
+                            "{} venceu com {} pares contra {} ({})!",
                             winner.user.mention(),
-                            winner.score,
+                            bold(winner.score.to_string()),
                             loser.user.mention(),
                             loser.score
                         ),

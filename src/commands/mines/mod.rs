@@ -3,11 +3,8 @@ use crate::{
     constants::{colors, icon},
     database::{self, UserModel},
     functions::{
-        format::format_currency,
-        ui::{
-            component::{send_ephemeral_response, update_component_message},
-            pretty_message::pretty_message,
-        },
+        format::{discord::bold, format_currency, pretty_message},
+        interactions::component::{send_ephemeral_response, update_component_message},
     },
 };
 use poise::serenity_prelude::{self as serenity, Mentionable};
@@ -33,12 +30,13 @@ const MIN_WAGER: i64 = 50;
 const MAX_WAGER: i64 = 50_000;
 const GAME_TIMEOUT: Duration = Duration::from_secs(180);
 
-/// Mini game Mines: aposte e tente escapar das bombas.
+/// Teste sua sorte contra as bombas!
 #[poise::command(
     slash_command,
     prefix_command,
     category = "Jogos",
-    interaction_context = "Guild"
+    interaction_context = "Guild",
+    on_error = "crate::commands::util::command_error_handler"
 )]
 pub async fn mines(
     ctx: Context<'_>,
@@ -52,8 +50,8 @@ pub async fn mines(
                 .content(pretty_message(
                     icon::ERROR,
                     format!(
-                        "O mínimo para jogar é **{}** moedas.",
-                        format_currency(MIN_WAGER)
+                        "O mínimo para jogar é {} moedas.",
+                        bold(format_currency(MIN_WAGER))
                     ),
                 ))
                 .ephemeral(true),
@@ -68,8 +66,8 @@ pub async fn mines(
                 .content(pretty_message(
                     icon::ERROR,
                     format!(
-                        "O máximo permitido por rodada é **{}** moedas.",
-                        format_currency(MAX_WAGER)
+                        "O máximo permitido por rodada é {} moedas.",
+                        bold(format_currency(MAX_WAGER))
                     ),
                 ))
                 .ephemeral(true),
@@ -80,11 +78,9 @@ pub async fn mines(
 
     let player = ctx.author().clone();
     let discord_id = player.id.get() as i64;
+    let db = ctx.data().database.clone();
 
-    let mut user = {
-        let db = ctx.data().database.lock().await;
-        database::get_or_create_user(&db, discord_id).await?
-    };
+    let mut user = database::get_or_create_user(&db, discord_id).await?;
     let mut wager_transaction_id: Option<i32>;
 
     if user.dollars < valor {
@@ -101,7 +97,6 @@ pub async fn mines(
     }
 
     wager_transaction_id = {
-        let db = ctx.data().database.lock().await;
         user.dollars -= valor;
         user = database::update_user_balance(&db, user.id, user.dollars, user.diamonds).await?;
         let transaction = database::insert_currency_transaction(
@@ -121,9 +116,9 @@ pub async fn mines(
     state.set_status(pretty_message(
         icon::BELL,
         format!(
-            "{} apostou **{}** moedas. Encontre {} diamantes antes de pensar em resgatar!",
+            "{} apostou {} moedas. Encontre {} diamantes antes de pensar em resgatar!",
             player.mention(),
-            format_currency(valor),
+            bold(format_currency(valor)),
             CASHOUT_STEP
         ),
     ));
@@ -209,9 +204,9 @@ pub async fn mines(
                     state.set_status(pretty_message(
                         icon::ERROR,
                         format!(
-                            "{} pisou em uma bomba e perdeu **{}** moedas.",
+                            "{} pisou em uma bomba e perdeu {} moedas.",
                             player.mention(),
-                            format_currency(state.wager)
+                            bold(format_currency(state.wager))
                         ),
                     ));
                     let (embed, components) = render_game(&state, &player);
@@ -262,9 +257,9 @@ pub async fn mines(
             state.set_status(pretty_message(
                 icon::CHECK,
                 format!(
-                    "{} cancelou a rodada e recuperou **{}** moedas.",
+                    "{} cancelou a rodada e recuperou {} moedas.",
                     player.mention(),
-                    format_currency(state.wager)
+                    bold(format_currency(state.wager))
                 ),
             ));
             let (embed, components) = render_game(&state, &player);
@@ -307,31 +302,29 @@ async fn finalize_cashout(
         return Ok(());
     }
 
-    {
-        let db = ctx.data().database.lock().await;
-        user.dollars += payout;
-        *user = database::update_user_balance(&db, user.id, user.dollars, user.diamonds).await?;
-        let context = if forced {
-            "Resgate automático"
-        } else {
-            "Resgate manual"
-        };
-        let kind = if forced {
-            "mines_autocashout"
-        } else {
-            "mines_cashout"
-        };
-        database::insert_currency_transaction(
-            &db,
-            user.id,
-            payout,
-            user.dollars,
-            "dollars",
-            kind,
-            Some(context.to_string()),
-        )
-        .await?;
-    }
+    let db = ctx.data().database.clone();
+    user.dollars += payout;
+    *user = database::update_user_balance(&db, user.id, user.dollars, user.diamonds).await?;
+    let context = if forced {
+        "Resgate automático"
+    } else {
+        "Resgate manual"
+    };
+    let kind = if forced {
+        "mines_autocashout"
+    } else {
+        "mines_cashout"
+    };
+    database::insert_currency_transaction(
+        &db,
+        user.id,
+        payout,
+        user.dollars,
+        "dollars",
+        kind,
+        Some(context.to_string()),
+    )
+    .await?;
 
     state.cashed_out_amount = Some(payout);
     state.reveal_all();
@@ -339,18 +332,18 @@ async fn finalize_cashout(
         pretty_message(
             icon::GIFT,
             format!(
-                "Resgate automático! {} garantiu **{}** moedas.",
+                "Resgate automático! {} garantiu {} moedas.",
                 player.mention(),
-                format_currency(payout)
+                bold(format_currency(payout))
             ),
         )
     } else {
         pretty_message(
             icon::GIFT,
             format!(
-                "{} resgatou **{}** moedas antes de atingir uma bomba.",
+                "{} resgatou {} moedas antes de atingir uma bomba.",
                 player.mention(),
-                format_currency(payout)
+                bold(format_currency(payout))
             ),
         )
     };
@@ -364,7 +357,7 @@ async fn refund_wager(
     amount: i64,
     transaction_id: Option<i32>,
 ) -> Result<(), Error> {
-    let db = ctx.data().database.lock().await;
+    let db = ctx.data().database.clone();
     user.dollars += amount;
     *user = database::update_user_balance(&db, user.id, user.dollars, user.diamonds).await?;
     if let Some(id) = transaction_id {
@@ -382,27 +375,27 @@ fn render_game(
         .colour(colors::MOON)
         .field(
             format!("{} Aposta", icon::DOLLAR),
-            format!("**{}** moedas", format_currency(state.wager)),
+            format!("{} moedas", bold(format_currency(state.wager))),
             true,
         )
         .field(
             format!("{} Diamante(s)", icon::DIAMOND),
             format!(
-                "**{} / {}** encontrados",
-                state.revealed_safe, FORCE_CASHOUT_AFTER
+                "{} encontrados",
+                bold(format!("{}/{}", state.revealed_safe, FORCE_CASHOUT_AFTER))
             ),
             true,
         )
         .field(
             format!("{} Multiplicador", icon::HASTAG),
-            format!("**x{:.2}**", state.current_multiplier()),
+            bold(format!("x{:.2}", state.current_multiplier())),
             true,
         );
 
     if let Some(amount) = state.cashed_out_amount {
         embed = embed.field(
             format!("{} Resultado", icon::GIFT),
-            format!("Resgate final de **{}** moedas", format_currency(amount)),
+            format!("Resgate final de {} moedas", bold(format_currency(amount))),
             false,
         );
     } else if state.busted {
@@ -422,8 +415,8 @@ fn render_game(
         embed = embed.field(
             format!("{} Resgate", icon::GIFT),
             format!(
-                "Disponível agora: **{}** moedas",
-                format_currency(state.projected_payout())
+                "Disponível agora: {} moedas",
+                bold(format_currency(state.projected_payout()))
             ),
             false,
         );
@@ -537,13 +530,11 @@ fn parse_tile_index(custom_id: &str, prefix: &str) -> Option<usize> {
 async fn autocomplete_wager(ctx: Context<'_>, partial: &str) -> CreateAutocompleteResponse {
     let cleaned_input: String = partial.chars().filter(|c| c.is_ascii_digit()).collect();
     let discord_id = ctx.author().id.get() as i64;
-    let balance = {
-        let db = ctx.data().database.lock().await;
-        database::get_or_create_user(&db, discord_id)
-            .await
-            .map(|user| user.dollars)
-            .unwrap_or(0)
-    };
+    let db = ctx.data().database.clone();
+    let balance = database::get_or_create_user(&db, discord_id)
+        .await
+        .map(|user| user.dollars)
+        .unwrap_or(0);
 
     let suggestions = build_wager_suggestions(balance);
     let mut choices = Vec::new();

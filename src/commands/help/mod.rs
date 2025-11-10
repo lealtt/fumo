@@ -1,7 +1,10 @@
 use crate::{
     Context, Error,
     constants::{colors, icon},
-    functions::ui::pretty_message::pretty_message,
+    functions::format::{
+        discord::{bold, inline_code, italic},
+        pretty_message,
+    },
 };
 use poise::serenity_prelude as serenity;
 use serenity::builder::CreateAutocompleteResponse;
@@ -18,7 +21,9 @@ use command_finder::CommandFinder;
     aliases("help", "h"),
     interaction_context = "Guild",
     rename = "ajuda",
-    category = "Geral"
+    category = "Geral",
+    on_error = "crate::commands::util::command_error_handler",
+    ephemeral = true
 )]
 pub async fn help(
     ctx: Context<'_>,
@@ -45,8 +50,10 @@ async fn send_overview(ctx: Context<'_>) -> Result<(), Error> {
             pretty_message(
                 icon::GEAR,
                 format!(
-                    "`{}` — {} _(Categoria: {})_",
-                    command.name, description, category
+                    "{} — {} {}",
+                    inline_code(&command.name),
+                    description,
+                    italic(format!("(Categoria: {category})")),
                 ),
             )
         })
@@ -54,7 +61,10 @@ async fn send_overview(ctx: Context<'_>) -> Result<(), Error> {
 
     let mut description = vec![pretty_message(
         icon::BELL,
-        "Use `/ajuda <comando>` para ver detalhes completos de um comando.",
+        format!(
+            "Use {} para ver detalhes completos de um comando.",
+            inline_code("/ajuda <comando>")
+        ),
     )];
 
     if lines.is_empty() {
@@ -64,7 +74,7 @@ async fn send_overview(ctx: Context<'_>) -> Result<(), Error> {
         ));
     } else {
         description.push(String::new());
-        description.push("**Comandos disponíveis**".to_string());
+        description.push(bold("Comandos disponíveis"));
         description.extend(lines);
     }
 
@@ -72,8 +82,7 @@ async fn send_overview(ctx: Context<'_>) -> Result<(), Error> {
         .description(description.join("\n"))
         .colour(colors::MINT);
 
-    ctx.send(poise::CreateReply::default().embed(embed).ephemeral(true))
-        .await?;
+    ctx.send(poise::CreateReply::default().embed(embed)).await?;
 
     Ok(())
 }
@@ -126,14 +135,14 @@ async fn send_command_help(ctx: Context<'_>, name: &str) -> Result<(), Error> {
             .colour(colors::MOON)
             .field(
                 format!("{} Categoria", icon::GEAR),
-                format!("`{}`", category),
+                inline_code(&category),
                 true,
             );
 
         if !aliases.is_empty() {
             let alias_str = aliases
                 .iter()
-                .map(|alias| format!("`{alias}`"))
+                .map(|alias| inline_code(alias))
                 .collect::<Vec<_>>()
                 .join(", ");
             embed = embed.field(format!("{} Alias", icon::HASTAG), alias_str, true);
@@ -144,26 +153,27 @@ async fn send_command_help(ctx: Context<'_>, name: &str) -> Result<(), Error> {
                 .iter()
                 .map(|param| {
                     let param_desc = param.description.as_deref().unwrap_or("Sem descrição");
-                    format!("`{}` — {}", param.name, param_desc)
+                    format!("{} — {}", inline_code(&param.name), param_desc)
                 })
                 .collect::<Vec<_>>()
                 .join("\n");
             embed = embed.field(format!("{} Parâmetros", icon::PLUS), params, false);
         }
 
-        ctx.send(poise::CreateReply::default().embed(embed).ephemeral(true))
-            .await?;
+        ctx.send(poise::CreateReply::default().embed(embed)).await?;
     } else {
         let embed = serenity::CreateEmbed::new()
             .title(format!("{} Comando não encontrado", icon::ERROR))
             .description(pretty_message(
                 icon::ERROR,
-                format!("Não foi possível encontrar um comando chamado `{name}`"),
+                format!(
+                    "Não foi possível encontrar um comando chamado {}",
+                    inline_code(name)
+                ),
             ))
             .colour(colors::MOON);
 
-        ctx.send(poise::CreateReply::default().embed(embed).ephemeral(true))
-            .await?;
+        ctx.send(poise::CreateReply::default().embed(embed)).await?;
     }
 
     Ok(())

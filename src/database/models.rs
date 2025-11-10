@@ -40,3 +40,12 @@ impl RewardStateModel {
             .map(|dt| dt.with_timezone(&Utc))
     }
 }
+
+#[derive(Clone, Debug, PartialEq, FromRow)]
+pub struct BlacklistEntryModel {
+    pub id: i32,
+    pub discord_id: i64,
+    pub moderator_id: i64,
+    pub reason: Option<String>,
+    pub created_at: String,
+}

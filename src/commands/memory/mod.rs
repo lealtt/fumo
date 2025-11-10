@@ -1,12 +1,15 @@
 use crate::{
     Context, Error,
     constants::{colors, icon},
-    functions::ui::{
-        component::{send_ephemeral_response, update_component_message},
-        pretty_message::pretty_message,
-        prompt::{
-            ConfirmationMessageHandle, ConfirmationOutcome, ConfirmationPromptOptions,
-            confirmation_prompt,
+    functions::{
+        format::{discord::bold, pretty_message},
+        interactions::{
+            component::{send_ephemeral_response, update_component_message},
+            opponent::{OpponentValidationMessages, ensure_valid_opponent},
+            prompt::{
+                ConfirmationMessageHandle, ConfirmationOutcome, ConfirmationPromptOptions,
+                confirmation_prompt,
+            },
         },
     },
 };
@@ -38,48 +41,41 @@ const HIDDEN_LABEL: &str = "❔";
     interaction_context = "Guild",
     category = "Jogos",
     rename = "memoria",
-    subcommands("solo", "versus")
+    subcommands("solo", "versus"),
+    on_error = "crate::commands::util::command_error_handler"
 )]
 pub async fn memory(_: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
 /// Encontre todos os pares sozinho.
-#[poise::command(slash_command, prefix_command, category = "Jogos")]
+#[poise::command(
+    slash_command,
+    prefix_command,
+    category = "Jogos",
+    on_error = "crate::commands::util::command_error_handler"
+)]
 pub async fn solo(ctx: Context<'_>) -> Result<(), Error> {
     let player = player_state::PlayerState::new(ctx.author().clone());
     run_game(ctx, Mode::Solo { player }, None).await
 }
 
 /// Desafie outra pessoa para ver quem encontra mais pares.
-#[poise::command(slash_command, prefix_command, category = "Jogos")]
+#[poise::command(
+    slash_command,
+    prefix_command,
+    category = "Jogos",
+    on_error = "crate::commands::util::command_error_handler"
+)]
 pub async fn versus(
     ctx: Context<'_>,
     #[description = "Oponente que jogará com você"] opponent: serenity::User,
 ) -> Result<(), Error> {
-    if opponent.id == ctx.author().id {
-        ctx.send(
-            poise::CreateReply::default()
-                .content(pretty_message(
-                    icon::ERROR,
-                    "Você precisa escolher alguém diferente para jogar com você.",
-                ))
-                .ephemeral(true),
-        )
-        .await?;
-        return Ok(());
-    }
-
-    if opponent.bot {
-        ctx.send(
-            poise::CreateReply::default()
-                .content(pretty_message(
-                    icon::ERROR,
-                    "Bots preferem assistir à partida, escolha um usuário humano.",
-                ))
-                .ephemeral(true),
-        )
-        .await?;
+    let validator = OpponentValidationMessages::new(
+        "Você precisa escolher alguém diferente para jogar com você.",
+        "Bots preferem assistir à partida, escolha um usuário humano.",
+    );
+    if !ensure_valid_opponent(&ctx, &opponent, validator).await? {
         return Ok(());
     }
 
@@ -319,12 +315,14 @@ fn build_embed(state: &MemoryGameState) -> serenity::CreateEmbed {
         pretty_message(
             icon::CHECK,
             format!(
-                "**{}/{}** pares descobertos",
-                state.matches,
-                state.total_pairs()
+                "{} pares descobertos",
+                bold(format!("{}/{}", state.matches, state.total_pairs()))
             ),
         ),
-        pretty_message(icon::TIMER, format!("**{}** tentativas", state.attempts)),
+        pretty_message(
+            icon::TIMER,
+            format!("{} tentativas", bold(state.attempts.to_string())),
+        ),
     ];
 
     if let Some(line) = state.mode.scoreboard_line() {

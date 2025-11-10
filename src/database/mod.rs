@@ -1,3 +1,4 @@
+pub mod blacklist;
 pub mod models;
 pub mod reward;
 pub mod transaction;
@@ -20,8 +21,12 @@ pub async fn connect() -> Result<SqlitePool, SqlxError> {
     Ok(pool)
 }
 
-pub use models::{CurrencyTransactionModel, RewardStateModel, UserModel};
+pub use models::{BlacklistEntryModel, CurrencyTransactionModel, RewardStateModel, UserModel};
 
+pub use blacklist::{
+    delete_by_discord_id as delete_blacklist_entry, find_by_discord_id as find_blacklist_entry,
+    insert as insert_blacklist_entry, list_recent as list_blacklist_entries,
+};
 pub use reward::{get_all as get_all_reward_states, upsert as upsert_reward_state};
 pub use transaction::{
     delete_by_id as delete_currency_transaction, insert as insert_currency_transaction,

@@ -1,12 +1,15 @@
 use crate::{
     Context, Error,
     constants::{colors, icon},
-    functions::ui::{
-        component::{send_ephemeral_response, update_component_message},
-        pretty_message::pretty_message,
-        prompt::{
-            ConfirmationMessageHandle, ConfirmationOutcome, ConfirmationPromptOptions,
-            confirmation_prompt,
+    functions::{
+        format::pretty_message,
+        interactions::{
+            component::{send_ephemeral_response, update_component_message},
+            opponent::{OpponentValidationMessages, ensure_valid_opponent},
+            prompt::{
+                ConfirmationMessageHandle, ConfirmationOutcome, ConfirmationPromptOptions,
+                confirmation_prompt,
+            },
         },
     },
 };
@@ -29,14 +32,20 @@ const CONFIRMATION_TIMEOUT: Duration = Duration::from_secs(45);
     prefix_command,
     interaction_context = "Guild",
     category = "Jogos",
-    subcommands("fumo", "versus")
+    subcommands("fumo", "versus"),
+    on_error = "crate::commands::util::command_error_handler"
 )]
 pub async fn jokenpo(_: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
 /// Enfrente a Fumo e teste sua sorte!
-#[poise::command(slash_command, prefix_command, category = "Jogos")]
+#[poise::command(
+    slash_command,
+    prefix_command,
+    category = "Jogos",
+    on_error = "crate::commands::util::command_error_handler"
+)]
 pub async fn fumo(ctx: Context<'_>) -> Result<(), Error> {
     let intro_embed = serenity::CreateEmbed::new()
         .title("🪨 JoKenPo - Solo")
@@ -124,34 +133,21 @@ pub async fn fumo(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Desafie outra pessoa para uma partida.
-#[poise::command(slash_command, prefix_command, category = "Jogos")]
+#[poise::command(
+    slash_command,
+    prefix_command,
+    category = "Jogos",
+    on_error = "crate::commands::util::command_error_handler"
+)]
 pub async fn versus(
     ctx: Context<'_>,
     #[description = "Jogador que você deseja desafiar"] opponent: serenity::User,
 ) -> Result<(), Error> {
-    if opponent.id == ctx.author().id {
-        ctx.send(
-            poise::CreateReply::default()
-                .content(pretty_message(
-                    icon::ERROR,
-                    "Você precisa convidar outra pessoa para jogar.",
-                ))
-                .ephemeral(true),
-        )
-        .await?;
-        return Ok(());
-    }
-
-    if opponent.bot {
-        ctx.send(
-            poise::CreateReply::default()
-                .content(pretty_message(
-                    icon::ERROR,
-                    "Bots preferem assistir. Escolha um usuário humano.",
-                ))
-                .ephemeral(true),
-        )
-        .await?;
+    let validator = OpponentValidationMessages::new(
+        "Você precisa convidar outra pessoa para jogar.",
+        "Bots preferem assistir. Escolha um usuário humano.",
+    );
+    if !ensure_valid_opponent(&ctx, &opponent, validator).await? {
         return Ok(());
     }
 
@@ -280,6 +276,32 @@ async fn start_versus_match(
         if selections.len() == 2 {
             break;
         }
+    }
+
+    let missing_player = if !selections.contains_key(&challenger.id) {
+        Some(challenger.clone())
+    } else if !selections.contains_key(&opponent.id) {
+        Some(opponent.clone())
+    } else {
+        None
+    };
+
+    if let Some(missing) = missing_player {
+        let reason = format!(
+            "Partida cancelada: {} não escolheu uma jogada a tempo.",
+            missing.mention()
+        );
+        channel_id
+            .edit_message(
+                ctx.serenity_context(),
+                message_id,
+                serenity::builder::EditMessage::new()
+                    .content("")
+                    .embed(versus_cancelled_embed(&reason))
+                    .components(Vec::new()),
+            )
+            .await?;
+        return Ok(());
     }
 
     let challenger_move = selections

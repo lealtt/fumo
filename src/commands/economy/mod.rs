@@ -3,9 +3,12 @@ use crate::{
     constants::{colors, icon},
     database::{self, CurrencyTransactionModel, RewardStateModel, UserModel},
     functions::{
-        format::format_currency,
+        format::{
+            discord::{bold, inline_code, italic},
+            format_currency, pretty_message,
+        },
+        interactions::pagination::paginate,
         time::{self, ResetTime},
-        ui::{pagination::paginate, pretty_message::pretty_message},
     },
 };
 use chrono::{DateTime, Utc};
@@ -35,72 +38,10 @@ const TRANSACTION_TIMEOUT: Duration = Duration::from_secs(180);
     rename = "economia",
     category = "Economia",
     interaction_context = "Guild",
-    subcommands("rewards", "balance", "transactions")
+    on_error = "crate::commands::util::command_error_handler",
+    subcommands("rewards", "transactions")
 )]
 pub async fn economy(_: Context<'_>) -> Result<(), Error> {
-    Ok(())
-}
-
-/// Veja seu saldo, diamantes e cooldown das recompensas.
-#[poise::command(slash_command, prefix_command, rename = "saldo", category = "Economia")]
-pub async fn balance(ctx: Context<'_>) -> Result<(), Error> {
-    ctx.defer_ephemeral().await?;
-
-    let discord_id = ctx.author().id.get() as i64;
-
-    let db = ctx.data().database.lock().await;
-    let user = database::get_or_create_user(&db, discord_id).await?;
-    let reward_states = database::get_all_reward_states(&db, user.id).await?;
-
-    let now = Utc::now();
-
-    let mut description_lines = vec![
-        pretty_message(
-            icon::DOLLAR,
-            format!("Saldo: **{}** moedas", user.dollars.max(0)),
-        ),
-        pretty_message(
-            icon::DIAMOND,
-            format!("Diamantes: **{}**", user.diamonds.max(0)),
-        ),
-    ];
-
-    description_lines.push(String::new());
-    description_lines.push("**Recompensas disponíveis:**".to_string());
-
-    for kind in RewardKind::ALL {
-        let state = reward_states
-            .iter()
-            .find(|s| s.reward_type == kind.db_name());
-        let available = is_reward_available(state, now);
-
-        let status = if available {
-            pretty_message(icon::CHECK, "Disponível agora")
-        } else if let Some(state) = state {
-            if let Some(next_time) = state.next_reset_datetime() {
-                pretty_message(icon::TIMER, time::describe_relative(next_time))
-            } else {
-                pretty_message(icon::CHECK, "Disponível agora")
-            }
-        } else {
-            pretty_message(icon::CHECK, "Disponível agora")
-        };
-
-        description_lines.push(format!("**{}:** {}", kind.field_title(), status));
-    }
-
-    let embed = serenity::CreateEmbed::new()
-        .title(format!(
-            "{} Carteira de {}",
-            icon::DOLLAR,
-            ctx.author().name
-        ))
-        .colour(colors::MINT)
-        .description(description_lines.join("\n"));
-
-    ctx.send(poise::CreateReply::default().embed(embed).ephemeral(true))
-        .await?;
-
     Ok(())
 }
 
@@ -109,27 +50,25 @@ pub async fn balance(ctx: Context<'_>) -> Result<(), Error> {
     slash_command,
     prefix_command,
     rename = "transações",
-    category = "Economia"
+    category = "Economia",
+    on_error = "crate::commands::util::command_error_handler",
+    ephemeral = true
 )]
 pub async fn transactions(ctx: Context<'_>) -> Result<(), Error> {
     ctx.defer_ephemeral().await?;
 
     let discord_id = ctx.author().id.get() as i64;
     let entries = {
-        let db = ctx.data().database.lock().await;
+        let db = ctx.data().database.clone();
         let user = database::get_or_create_user(&db, discord_id).await?;
         database::list_currency_transactions(&db, user.id, TRANSACTION_FETCH_LIMIT).await?
     };
 
     if entries.is_empty() {
-        ctx.send(
-            poise::CreateReply::default()
-                .ephemeral(true)
-                .content(pretty_message(
-                    icon::HOUSE,
-                    "Ainda não há transações registradas para sua conta.",
-                )),
-        )
+        ctx.send(poise::CreateReply::default().content(pretty_message(
+            icon::EMPTY,
+            "Ainda não há transações registradas para sua conta.",
+        )))
         .await?;
         return Ok(());
     }
@@ -143,7 +82,9 @@ pub async fn transactions(ctx: Context<'_>) -> Result<(), Error> {
     slash_command,
     prefix_command,
     rename = "recompensas",
-    category = "Economia"
+    category = "Economia",
+    on_error = "crate::commands::util::command_error_handler",
+    ephemeral = true
 )]
 pub async fn rewards(ctx: Context<'_>) -> Result<(), Error> {
     ctx.defer_ephemeral().await?;
@@ -151,7 +92,7 @@ pub async fn rewards(ctx: Context<'_>) -> Result<(), Error> {
     let discord_id = ctx.author().id.get() as i64;
 
     let (mut user, mut reward_states) = {
-        let db = ctx.data().database.lock().await;
+        let db = ctx.data().database.clone();
         let user = database::get_or_create_user(&db, discord_id).await?;
         let states = database::get_all_reward_states(&db, user.id).await?;
         (user, states)
@@ -163,7 +104,6 @@ pub async fn rewards(ctx: Context<'_>) -> Result<(), Error> {
     let reply = ctx
         .send(
             poise::CreateReply::default()
-                .ephemeral(true)
                 .embed(embed)
                 .components(components.clone()),
         )
@@ -182,10 +122,8 @@ pub async fn rewards(ctx: Context<'_>) -> Result<(), Error> {
         };
 
         let now = Utc::now();
-        let state = reward_states
-            .iter()
-            .find(|s| s.reward_type == kind.db_name());
-        let available = is_reward_available(state, now);
+        let state_snapshot = RewardStateLookup::new(&reward_states).get(kind).cloned();
+        let available = is_reward_available(state_snapshot.as_ref(), now);
         let response_text;
 
         if available {
@@ -195,11 +133,14 @@ pub async fn rewards(ctx: Context<'_>) -> Result<(), Error> {
                 user.diamonds += amount;
             }
 
-            let total_claims = state.map(|s| s.total_claims + 1).unwrap_or(1);
+            let total_claims = state_snapshot
+                .as_ref()
+                .map(|s| s.total_claims + 1)
+                .unwrap_or(1);
             let next_reset = time::next_reset_from(now, kind.reset_period(), &RESET_CONFIG);
 
             {
-                let db = ctx.data().database.lock().await;
+                let db = ctx.data().database.clone();
                 user = database::update_user_balance(&db, user.id, user.dollars, user.diamonds)
                     .await?;
                 if money != 0 {
@@ -225,19 +166,12 @@ pub async fn rewards(ctx: Context<'_>) -> Result<(), Error> {
                 )
                 .await?;
 
-                if let Some(existing) = reward_states
-                    .iter_mut()
-                    .find(|s| s.reward_type == kind.db_name())
-                {
-                    *existing = new_state;
-                } else {
-                    reward_states.push(new_state);
-                }
+                replace_reward_state(&mut reward_states, kind, new_state);
             }
 
             response_text = format_claim_message(money, diamonds);
         } else {
-            response_text = if let Some(state) = state {
+            response_text = if let Some(state) = state_snapshot.as_ref() {
                 if let Some(next_time) = state.next_reset_datetime() {
                     format_cooldown_message(next_time)
                 } else {
@@ -294,23 +228,20 @@ fn build_rewards_message(
         description_lines.push(status.to_string());
     }
 
+    let lookup = RewardStateLookup::new(reward_states);
     let mut embed: serenity::CreateEmbed = serenity::CreateEmbed::new()
         .colour(colors::MOON)
         .description(description_lines.join("\n"));
 
     for kind in RewardKind::ALL {
-        let state = reward_states
-            .iter()
-            .find(|s| s.reward_type == kind.db_name());
+        let state = lookup.get(kind);
         embed = embed.field(kind.field_title(), reward_field(state, kind, now), true);
     }
 
-    let buttons = RewardKind::ALL
-        .iter()
+    let reward_buttons = RewardKind::ALL
+        .into_iter()
         .map(|kind| {
-            let state = reward_states
-                .iter()
-                .find(|s| s.reward_type == kind.db_name());
+            let state = lookup.get(kind);
             CreateButton::new(kind.custom_id())
                 .label(kind.button_label())
                 .emoji(kind.button_emoji().as_reaction())
@@ -318,9 +249,40 @@ fn build_rewards_message(
                 .disabled(!is_reward_available(state, now))
         })
         .collect();
-    let components = vec![CreateActionRow::Buttons(buttons)];
+    let components = vec![CreateActionRow::Buttons(reward_buttons)];
 
     (embed, components)
+}
+
+struct RewardStateLookup<'a> {
+    states: &'a [RewardStateModel],
+}
+
+impl<'a> RewardStateLookup<'a> {
+    fn new(states: &'a [RewardStateModel]) -> Self {
+        Self { states }
+    }
+
+    fn get(&self, kind: RewardKind) -> Option<&'a RewardStateModel> {
+        self.states
+            .iter()
+            .find(|state| state.reward_type == kind.db_name())
+    }
+}
+
+fn replace_reward_state(
+    states: &mut Vec<RewardStateModel>,
+    kind: RewardKind,
+    new_state: RewardStateModel,
+) {
+    if let Some(existing) = states
+        .iter_mut()
+        .find(|state| state.reward_type == kind.db_name())
+    {
+        *existing = new_state;
+    } else {
+        states.push(new_state);
+    }
 }
 
 fn reward_field(state: Option<&RewardStateModel>, kind: RewardKind, now: DateTime<Utc>) -> String {
@@ -426,16 +388,20 @@ fn format_transaction_entry(entry: &CurrencyTransactionModel) -> String {
 
     let mut lines = vec![
         format!(
-            "{} **{} {}**",
-            direction_icon, amount_display, currency_label
+            "{} {}",
+            direction_icon,
+            bold(format!("{amount_display} {currency_label}"))
         ),
-        format!("Saldo após: **{} {}**", balance_display, currency_label),
-        format!("Tipo: `{}` • {}", entry.kind, timestamp),
+        format!(
+            "Saldo após: {}",
+            bold(format!("{balance_display} {currency_label}"))
+        ),
+        format!("Tipo: {} • {}", inline_code(&entry.kind), timestamp),
     ];
 
     if let Some(context) = &entry.context {
         if !context.is_empty() {
-            lines.push(format!("Contexto: _{}_ ", context));
+            lines.push(format!("Contexto: {}", italic(context)));
         }
     }
 
@@ -463,6 +429,7 @@ async fn paginate_transaction_pages(ctx: Context<'_>, pages: Vec<String>) -> Res
         total_pages,
         TRANSACTION_TIMEOUT,
         true,
+        0,
         move |current_page, total_pages| {
             let embed = build_transactions_embed(
                 &author_name,

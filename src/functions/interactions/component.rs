@@ -3,7 +3,7 @@ use poise::serenity_prelude as serenity;
 use serenity::CreateActionRow;
 use serenity::builder::CreateInteractionResponseMessage;
 
-/// Sends a simple ephemeral message in response to a component interaction.
+/// Sends a simple ephemeral message in response to a component interaction
 pub async fn send_ephemeral_response(
     ctx: &Context<'_>,
     interaction: &serenity::ComponentInteraction,
@@ -22,7 +22,7 @@ pub async fn send_ephemeral_response(
     Ok(())
 }
 
-/// Updates the original message tied to the component interaction.
+/// Updates the original message tied to the component interaction
 pub async fn update_component_message(
     ctx: &Context<'_>,
     interaction: &serenity::ComponentInteraction,
